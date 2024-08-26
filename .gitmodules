@@ -1,0 +1,18 @@
+[submodule "seller"]
+	path = seller
+	url = https://github.com/vardastCO/seller.git
+[submodule "product"]
+	path = product
+	url = https://github.com/vardastCO/product.git
+[submodule "order"]
+	path = order
+	url = https://github.com/vardastCO/order.git
+[submodule "log"]
+	path = log
+	url = https://github.com/vardastCO/log.git
+[submodule "gateway"]
+	path = gateway
+	url = https://github.com/vardastCO/gateway.git
+[submodule "asset"]
+	path = asset
+	url = https://github.com/vardastCO/asset.git

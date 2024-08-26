@@ -1,0 +1,333 @@
+version: '3'
+
+services:
+  product:
+    build:
+      context: ./product
+    depends_on:
+      - gateway
+      - rabbitmq
+      - database
+      - cache
+      - storage
+    restart: always
+    ports:
+      - "3000:3000"
+    networks:
+      - vardast
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: '2G'
+
+  asset:
+    build:
+      context: ./asset
+    depends_on:
+      - gateway
+      - rabbitmq
+      - database
+      - cache
+      - storage
+    restart: always
+    environment:
+      - IMGPROXY_BASE_URL=http://127.0.0.1:8888
+      - IMGPROXY_KEY=943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881
+      - IMGPROXY_SALT=520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5
+    ports:
+      - "3003:3003"
+    networks:
+      - vardast
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: '1G'
+
+  seller:
+    build:
+      context: ./seller
+    depends_on:
+      - gateway
+      - rabbitmq
+      - database
+      - cache
+      - storage
+    restart: always
+    environment:
+      - IMGPROXY_BASE_URL=http://127.0.0.1:8888
+      - IMGPROXY_KEY=943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881
+      - IMGPROXY_SALT=520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5
+    ports:
+      - "3011:3011"
+    networks:
+      - vardast
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: '1G'
+  log:
+    build:
+      context: ./log
+    depends_on:
+      - gateway
+      - rabbitmq
+      - database
+      - cache
+      - storage
+    restart: always
+    environment:
+      - IMGPROXY_BASE_URL=http://127.0.0.1:8888
+      - IMGPROXY_KEY=943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881
+      - IMGPROXY_SALT=520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5
+    ports:
+      - "3013:3013"
+    networks:
+      - vardast
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: '1G'
+  order:
+    build:
+      context: ./order
+    depends_on:
+      - gateway
+      - rabbitmq
+      - database
+      - cache
+      - storage
+    restart: always
+    environment:
+      - IMGPROXY_BASE_URL=http://127.0.0.1:8888
+      - IMGPROXY_KEY=943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881
+      - IMGPROXY_SALT=520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5
+    ports:
+      - "3015:3015"
+    networks:
+      - vardast
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: '1G'
+  gateway:
+    ports:
+      - "3009:3009"
+    restart: always
+    build:
+      context: ./gateway
+    depends_on:
+      - rabbitmq
+      - database
+      - cache
+      - storage
+    networks:
+      - vardast
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: '1G'
+
+  rabbitmq:
+    image: "rabbitmq:3.12.13-management-alpine"
+    restart: always
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    networks:
+      - vardast
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: '1G'
+
+  database:
+    image: postgres:15.6-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: vardast@1234
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/create_db.sql:/docker-entrypoint-initdb.d/create_db.sql
+    networks:
+      - vardast
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: '1G'
+
+  cache:
+    image: redis
+    restart: always
+    ports:
+      - 6378:6379
+    networks:
+      - vardast
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    environment:
+      - REDIS_PASSWORD=g90pM89O
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '512M'
+
+  memcached_server:
+    image: memcached:1.6-alpine
+    restart: unless-stopped
+    command: memcached -m 512
+    networks:
+      - vardast
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '512M'
+
+  storage:
+    image: quay.io/minio/minio
+    expose:
+    - "9000"
+    - "9001"
+    environment:
+      MINIO_ROOT_USER: farbod
+      MINIO_ROOT_PASSWORD: g90pM89O
+      MINIO_SITE_REGION : ir-tehran
+    volumes:
+      - ./asset/files:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    command: server /data --console-address ":9001"
+    networks:
+      - vardast
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: '1G'
+
+  imgproxy:
+    image: darthsim/imgproxy:v3.18
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    environment:
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:-admin}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-changeme}
+      - IMGPROXY_KEY=943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881
+      - IMGPROXY_SALT=520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5
+      - IMGPROXY_S3_REGION=ir-tehran
+      - IMGPROXY_USE_S3=true
+      - IMGPROXY_ALLOWED_SOURCES=http://nginx:9000/vardast/*
+      - IMGPROXY_S3_ENDPOINT=http://nginx:9000
+      - IMGPROXY_DEVELOPMENT_ERRORS_MODE=true
+      - IMGPROXY_IGNORE_SSL_VERIFICATION=true
+      - IMGPROXY_ALLOW_LINK_LOCAL_SOURCE_ADDRESSES=true
+      - IMGPROXY_ALLOW_PRIVATE_SOURCE_ADDRESSES=true
+    networks:
+      - vardast
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: '1G'
+
+  # elasticsearch:
+  #   image: elasticsearch:7.17.19
+  #   restart: always
+  #   environment:
+  #     - discovery.type=single-node
+  #     - ELASTIC_PASSWORD=farbod
+  #     - xpack.security.enabled=true
+  #     - xpack.security.authc.api_key.enabled=true
+  #   ports:
+  #     - "9200:9200"
+  #   networks:
+  #     - vardast
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '2'
+  #         memory: '4G'
+
+  # logstash:
+  #   image: logstash:7.17.19
+  #   volumes:
+  #     - ./logstash/:/logstash_dir
+  #   command: logstash -f /logstash_dir/logstash.conf
+  #   restart: always
+  #   depends_on:
+  #     - elasticsearch
+  #   environment:
+  #     - "LS_JAVA_OPTS=-Xmx1g -Xms1g" # JVM Heap Size
+  #   ports:
+  #     - "5000:5000"
+  #   networks:
+  #     - vardast
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1'
+  #         memory: '2G'
+
+  # kibana:
+  #   image:  kibana:7.17.19
+  #   ports:
+  #     - "5601:5601"
+  #   networks:
+  #     - vardast
+  #   restart: always
+  #   environment:
+  #     - ELASTICSEARCH_URL=https://search.vardast.com
+  #     - ELASTICSEARCH_USERNAME=elastic
+  #     - ELASTICSEARCH_PASSWORD=farbod
+  #   depends_on:
+  #     - elasticsearch
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1'
+  #         memory: '2G'
+  
+  nginx:
+    build: ./nginx
+    restart: unless-stopped
+    volumes:
+      - ./asset/files:/var/www/image-storage
+    depends_on:
+      - storage
+      - memcached_server
+      - asset
+    ports:
+      # - 433:433 # enable ssl later
+      - 8085:80
+      - 8888:8888 # can removed
+      - 9000:9000 # can removed
+      - 9001:9001
+    networks:
+      - vardast
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '512M'
+
+volumes:
+  pg_data:
+
+networks:
+  vardast:
+    external: true
